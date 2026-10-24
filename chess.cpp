@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cctype> 
 #include <vector>
+#include <algorithm>
 int whitekingpos[2]={7,4};
 int blackkingpos[2]={0,4};
 bool isincheck=false;
@@ -166,8 +167,49 @@ bool validTurn(char board[8][8], int RowStart, int ColStart, int RowEnd, int Col
     if(islower(board[RowStart][ColStart])&& counter%2==0)return false;
     return false;
 }
-
-bool isValidMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter){
+bool whiteKingMoved=false, blackKingMoved=false;
+bool whiteRookHMoved=false, whiteRookAMoved=false; 
+bool blackRookHMoved=false, blackRookAMoved=false;
+bool kingSafeAt(char board[8][8], int row, int col, char king){
+    char saved = board[row][col];
+    board[row][col] = king;
+    bool safe = !isInCheck(board, row, col);
+    board[row][col] = saved;
+    return safe;
+}
+bool isValidCastle(char board[8][8], const std::string &move, int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter){
+    if(move=="O.O" && counter%2==0){
+        if(!whiteKingMoved && !whiteRookHMoved && board[7][4]=='K' && board[7][7]=='R' &&
+           board[7][5]=='.' && board[7][6]=='.' &&
+           kingSafeAt(board,7,4,'K') && kingSafeAt(board,7,5,'K') && kingSafeAt(board,7,6,'K')){
+            return true;
+        }
+    }
+    if(move=="O.O.O" && counter%2==0){
+        if(!whiteKingMoved && !whiteRookAMoved && board[7][4]=='K' && board[7][0]=='R' &&
+           board[7][1]=='.' && board[7][2]=='.' && board[7][3]=='.' &&
+           kingSafeAt(board,7,4,'K') && kingSafeAt(board,7,3,'K') && kingSafeAt(board,7,2,'K')){
+            return true;
+        }
+    }
+    if(move=="O.O" && counter%2!=0){
+        if(!blackKingMoved && !blackRookHMoved && board[0][4]=='k' && board[0][7]=='r' &&
+           board[0][5]=='.' && board[0][6]=='.' &&
+           kingSafeAt(board,0,4,'k') && kingSafeAt(board,0,5,'k') && kingSafeAt(board,0,6,'k')){
+            return true;
+        }
+    }
+    if(move=="O.O.O" && counter%2!=0){
+        if(!blackKingMoved && !blackRookAMoved && board[0][4]=='k' && board[0][0]=='r' &&
+           board[0][1]=='.' && board[0][2]=='.' && board[0][3]=='.' &&
+           kingSafeAt(board,0,4,'k') && kingSafeAt(board,0,3,'k') && kingSafeAt(board,0,2,'k')){
+            return true;
+        }
+    }
+    return false;
+}
+bool isValidMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter, const std::string &move){
+    if(move=="O.O" || move=="O.O.O") return isValidCastle(board, move, RowStart, ColStart, RowEnd, ColEnd, counter);
     char piece = board[RowStart][ColStart];
     if(piece=='.')return false;
     if(piece=='p'|| piece=='P' ){
@@ -226,7 +268,7 @@ std::vector <Move> getAllPossibleMoves(char board[8][8], int RowStart, int ColSt
         for(ColStart=0;ColStart<8;ColStart++){       
             for(int i=0;i<8;i++){
                 for(int j=0;j<8;j++){
-                    if(isValidMove(board, RowStart, ColStart, i, j, counter)){
+                    if(isValidMove(board, RowStart, ColStart, i, j, counter, "")){
                         Move m;
                         m.RowStart = RowStart;
                         m.ColStart = ColStart;
@@ -287,15 +329,27 @@ int main(){
         std::string move;
         std::cout << (counter%2==0? "White's turn: " : "Black's turn: ");
         std::cin >> move;
-        if(move.length()!=4){
-            std::cout<<"Invalid move format. Please use format like e2e4.\n";
+        if(move.length()!=4 && move != "O.O" && move != "O.O.O"){
+            std::cout<<"Invalid move format. Please use format like e2e4 or O.O/O.O.O for castle.\n";
             continue;
         }
-        int ColStart = move[0] - 'a';
-        int RowStart = 8 - (move[1] - '0');
-        int ColEnd = move[2] - 'a';
-        int RowEnd = 8 - (move[3] - '0');
-        if(isValidMove(board, RowStart, ColStart, RowEnd, ColEnd, counter)){
+        if(move.length() == 4 && (move[0] < 'a' || move[0] > 'h' || move[1] < '1' || move[1] > '8' ||
+           move[2] < 'a' || move[2] > 'h' || move[3] < '1' || move[3] > '8')){
+            std::cout<<"Invalid move format. Squares must be a-h and 1-8.\n";
+            continue;
+        }
+        int ColStart=0, RowStart=0, ColEnd=0, RowEnd=0;
+            if(move=="O.O" || move=="O.O.O"){
+                int row = (counter%2==0) ? 7 : 0;
+                RowStart = row; ColStart = 4; RowEnd = row;
+                ColEnd = (move=="O.O") ? 6 : 2;
+            }else{
+                ColStart = move[0] - 'a';
+                RowStart = 8 - (move[1] - '0');
+                ColEnd = move[2] - 'a';
+                RowEnd = 8 - (move[3] - '0');
+            }     
+        if(isValidMove(board, RowStart, ColStart, RowEnd, ColEnd, counter, move)){
             char moved = board[RowStart][ColStart];
             char captured = board[RowEnd][ColEnd];
             board[RowEnd][ColEnd] = moved;
@@ -306,7 +360,7 @@ int main(){
             if(moved == 'K' || moved == 'k'){
                 kingRow = RowEnd;
                 kingCol = ColEnd;
-            }
+            }      
             if(isInCheck(board, kingRow, kingCol)){
                 board[RowStart][ColStart] = moved;
                 board[RowEnd][ColEnd] = captured;
@@ -314,6 +368,14 @@ int main(){
             } else {
                 if(moved == 'K'){ whitekingpos[0] = RowEnd; whitekingpos[1] = ColEnd; }
                 if(moved == 'k'){ blackkingpos[0] = RowEnd; blackkingpos[1] = ColEnd; }
+                if(moved=='K') whiteKingMoved=true;
+                if(moved=='k') blackKingMoved=true;
+                if(moved=='R' && RowStart==7 && ColStart==7) whiteRookHMoved=true;
+                if(moved=='R' && RowStart==7 && ColStart==0) whiteRookAMoved=true;
+                if(moved=='r' && RowStart==0 && ColStart==7) blackRookHMoved=true;
+                if(moved=='r' && RowStart==0 && ColStart==0) blackRookAMoved=true;
+                if(move=="O.O"){   board[RowStart][5]=board[RowStart][7]; board[RowStart][7]='.'; }
+                if(move=="O.O.O"){ board[RowStart][3]=board[RowStart][0]; board[RowStart][0]='.'; }
                 counter++;
                 int enemyKingRow = whiteMoved ? blackkingpos[0] : whitekingpos[0];
                 int enemyKingCol = whiteMoved ? blackkingpos[1] : whitekingpos[1];
@@ -326,6 +388,10 @@ int main(){
                         std::cout << "";
                     }
                 }
+                else if(Checkmate(board, enemyKingRow, enemyKingCol, counter)){
+                std::cout<<"Stalemate, draw.\n";
+                break;
+            }
             }
         }
         else{
