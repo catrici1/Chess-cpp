@@ -1,5 +1,4 @@
 #include <iostream>
-#include <iostream>
 #include <string>
 #include <cstdlib>
 #include <cctype> 
@@ -32,20 +31,30 @@ bool isValidKingMove(char board[8][8], int RowStart, int ColStart, int RowEnd, i
     }
     return false;
 }
+int PawnValue=-1; // -1 for none value, 0-7 for new move and column
+bool PawnPromotion=false;
 bool isValidPawnMove(char board[8][8],int RowStart, int ColStart,int  RowEnd,int  ColEnd,char piece){
     int direction = (piece == 'P') ? -1 : 1;
- 
+    
     if(ColEnd == ColStart && RowEnd == RowStart + direction && board[RowEnd][ColEnd] == '.'){
         return true;
     }
  
     int startRow = (piece == 'P') ? 6 : 1;
     if(ColEnd == ColStart && RowStart == startRow && RowEnd == RowStart + (2 * direction) &&
-       board[RowStart + direction][ColStart] == '.' && board[RowEnd][ColEnd] == '.'){
+        board[RowStart + direction][ColStart] == '.' && board[RowEnd][ColEnd] == '.'){
         return true;
     }
-    if(RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) &&
-       board[RowEnd][ColEnd] != '.' && ((piece == 'P' && islower(board[RowEnd][ColEnd])) || (piece == 'p' && isupper(board[RowEnd][ColEnd])))){
+
+
+    int captured = board[RowEnd][ColEnd];  // en passant logic
+    if(RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) && 
+    ((piece == 'P' && captured=='.' && (board[RowStart][ColEnd])=='p' && PawnValue==ColEnd) || (piece == 'p' && captured=='.' && (board[RowStart][ColEnd])=='P' && PawnValue==ColEnd))){
+        return true;
+    }
+
+
+    if(RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) && board[RowEnd][ColEnd] != '.' && ((piece == 'P' && islower(board[RowEnd][ColEnd])) || (piece == 'p' && isupper(board[RowEnd][ColEnd])))){
         return true;
     }
     return false;
@@ -215,7 +224,8 @@ bool isValidMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int C
     if(piece=='p'|| piece=='P' ){
         if((isValidPawnMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
             return true;
-        }else{
+        }
+        else{
             return false;
         }
     }
@@ -348,24 +358,31 @@ int main(){
                 RowStart = 8 - (move[1] - '0');
                 ColEnd = move[2] - 'a';
                 RowEnd = 8 - (move[3] - '0');
-            }     
+            }    
         if(isValidMove(board, RowStart, ColStart, RowEnd, ColEnd, counter, move)){
             char moved = board[RowStart][ColStart];
             char captured = board[RowEnd][ColEnd];
             board[RowEnd][ColEnd] = moved;
             board[RowStart][ColStart] = '.';
+            char epPawn = '.';                                 
+            if((moved=='P' || moved=='p') && ColStart != ColEnd && captured == '.'){
+                epPawn = board[RowStart][ColEnd];         
+                board[RowStart][ColEnd] = '.';                 
+            }                                                    
             bool whiteMoved = isupper(moved);
             int kingRow = whiteMoved ? whitekingpos[0] : blackkingpos[0];
             int kingCol = whiteMoved ? whitekingpos[1] : blackkingpos[1];              
             if(moved == 'K' || moved == 'k'){
                 kingRow = RowEnd;
                 kingCol = ColEnd;
-            }      
+            } 
             if(isInCheck(board, kingRow, kingCol)){
                 board[RowStart][ColStart] = moved;
                 board[RowEnd][ColEnd] = captured;
+                if(epPawn != '.') board[RowStart][ColEnd] = epPawn;
                 std::cout << "That leaves your king in check.\n";
-            } else {
+            }
+            else {
                 if(moved == 'K'){ whitekingpos[0] = RowEnd; whitekingpos[1] = ColEnd; }
                 if(moved == 'k'){ blackkingpos[0] = RowEnd; blackkingpos[1] = ColEnd; }
                 if(moved=='K') whiteKingMoved=true;
@@ -377,6 +394,33 @@ int main(){
                 if(move=="O.O"){   board[RowStart][5]=board[RowStart][7]; board[RowStart][7]='.'; }
                 if(move=="O.O.O"){ board[RowStart][3]=board[RowStart][0]; board[RowStart][0]='.'; }
                 counter++;
+                std::string promotion;
+                if((moved=='P' || moved=='p') && (RowEnd==7 || RowEnd==0)){
+                    bool done = false;
+                    while(!done){
+                        std::cout<<"Your pawn has reached the promotion square, please input the piece which u want to promote into.\n";
+                        std::cout<<"The piece should be all lower case. Examples: 'queen', 'knight', 'bishop', 'rook'.\n";
+                        std::cin>>promotion;
+                        done = true;
+                        if((promotion=="queen")  && (moved=='P'))board[RowEnd][ColEnd]='Q';
+                        else if((promotion=="queen")  && (moved=='p'))board[RowEnd][ColEnd]='q';
+                        else if((promotion=="rook")  && (moved=='P'))board[RowEnd][ColEnd]='R';
+                        else if((promotion=="rook")  && (moved=='p'))board[RowEnd][ColEnd]='r';
+                        else if((promotion=="knight")  && (moved=='P'))board[RowEnd][ColEnd]='N';
+                        else if((promotion=="knight")  && (moved=='p'))board[RowEnd][ColEnd]='n';
+                        else if((promotion=="bishop")  && (moved=='P'))board[RowEnd][ColEnd]='B';
+                        else if((promotion=="bishop")  && (moved=='p'))board[RowEnd][ColEnd]='b';
+                        else{
+                            std::cout<<"Invalid promotion piece. Please try again.\n";
+                            done = false;
+                        }
+                    }
+                }
+                PawnValue = -1; // Reset PawnValue after the move
+                if((moved == 'P' || moved == 'p') && abs(RowStart - RowEnd) == 2){
+                    PawnValue = ColEnd;
+                    
+                }                 
                 int enemyKingRow = whiteMoved ? blackkingpos[0] : whitekingpos[0];
                 int enemyKingCol = whiteMoved ? blackkingpos[1] : whitekingpos[1];
                 if(isInCheck(board, enemyKingRow, enemyKingCol)){
