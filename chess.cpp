@@ -4,13 +4,14 @@
 #include <cctype> 
 #include <vector>
 #include <algorithm>
+#include <random>
 int whitekingpos[2]={7,4};
 int blackkingpos[2]={0,4};
 bool isincheck=false;
 void BoardPrint(char board[8][8]){
     std::cout<<"  a b c d e f g h\n";
     for(int i=0;i<8;i++){
-        std::cout<<8-i<< " ";
+        std::cout<<8-i<< " "; 
         for(int j=0;j<8;j++){
             std::cout<<board[i][j]<<" ";
         }
@@ -76,6 +77,10 @@ bool isValidKnightMove(char board[8][8], int RowStart, int ColStart, int RowEnd,
     return false;
 }
 bool isValidBishopMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+    int colDiff = abs(ColEnd - ColStart);
+    int rowDiff = abs(RowEnd - RowStart);
+    if(colDiff != rowDiff) return false;
+
     char target = board[RowEnd][ColEnd];
  
     if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') || (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
@@ -109,13 +114,7 @@ bool isValidBishopMove(char board[8][8], int RowStart, int ColStart, int RowEnd,
             }
         }
     }
-    int colDiff = abs(ColEnd - ColStart);
-    int rowDiff = abs(RowEnd - RowStart);
-    if (colDiff==rowDiff) {
-        return true;
-    }
- 
-    return false;
+    return true;
 }
 bool isValidRookMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
     if (RowStart == RowEnd && ColStart == ColEnd) return false;
@@ -290,6 +289,9 @@ std::vector <Move> getAllPossibleMoves(char board[8][8], int RowStart, int ColSt
             }
         } 
     }  
+    int row = (counter%2==0) ? 7 : 0;
+    if(isValidMove(board, row, 4, row, 6, counter, "O.O"))   moves.push_back({row, 4, row, 6});
+    if(isValidMove(board, row, 4, row, 2, counter, "O.O.O")) moves.push_back({row, 4, row, 2});
     return moves;
 }
 
@@ -308,7 +310,6 @@ bool Checkmate(char board[8][8], int RowStart, int ColStart, const int &counter)
             kingRow = m.RowEnd;
             kingCol = m.ColEnd;
         }
-
         if(!isInCheck(board, kingRow, kingCol)){
             validMoves.push_back(m);
             board[m.RowStart][m.ColStart] = moved;
@@ -321,6 +322,155 @@ bool Checkmate(char board[8][8], int RowStart, int ColStart, const int &counter)
     }
     return validMoves.empty();
 }
+std::vector<Move> LegalMoveGenerator(char board[8][8], int RowStart, int ColStart, const int &counter){
+    std::vector <Move> moves=getAllPossibleMoves(board, RowStart, ColStart, counter);
+    std::vector<Move> legalmoves;
+    for(int i=0;i<moves.size();i++){
+        Move m=moves[i];
+        char moved= board[m.RowStart][m.ColStart];
+        char captured = board[m.RowEnd][m.ColEnd];
+        board[m.RowEnd][m.ColEnd] = moved;
+        board[m.RowStart][m.ColStart] = '.';
+        int kingRow = RowStart;
+        int kingCol = ColStart;
+        if(moved == 'K' || moved == 'k'){
+            kingRow = m.RowEnd;
+            kingCol = m.ColEnd;
+        }
+
+        if(!isInCheck(board, kingRow, kingCol)){
+            legalmoves.push_back(m);
+            board[m.RowStart][m.ColStart] = moved;
+            board[m.RowEnd][m.ColEnd] = captured;
+        }
+        else {
+            board[m.RowStart][m.ColStart] = moved;
+            board[m.RowEnd][m.ColEnd] = captured;
+        }
+    }
+    return legalmoves;
+}
+int Values(char p){
+    if(p=='Q' || p=='q') return 900;
+    if(p=='R' || p=='r') return 500;
+    if(p=='B' || p=='b') return 300;
+    if(p=='N' || p=='n') return 300;
+    if(p=='P' || p=='p') return 100;
+    return 0;
+}
+int ValuesPosition(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+    static const int pawnTable[8][8] = {
+        {  0,  0,  0,  0,  0,  0,  0,  0},
+        { 50, 50, 50, 50, 50, 50, 50, 50},
+        { 10, 10, 20, 30, 30, 20, 10, 10},
+        {  5,  5, 10, 25, 25, 10,  5,  5},
+        {  0,  0,  0, 20, 20,  0,  0,  0},
+        {  5, -5,-10,  0,  0,-10, -5,  5},
+        {  50, 50, 10,-20,-20, 10, 10,  5},
+        {  0,  0,  0,  0,  0,  0,  0,  0}
+    };
+    static const int knightTable[8][8] = {
+        {-50,-40,-30,-30,-30,-30,-40,-50},
+        {-40,-20,  0,  0,  0,  0,-20,-40},
+        {-30,  0, 10, 15, 15, 10,  0,-30},
+        {-30,  5, 15, 20, 20, 15,  5,-30},
+        {-30,  0, 15, 20, 20, 15,  0,-30},
+        {-30,  5, 10, 15, 15, 10,  5,-30},
+        {-40,-20,  0,  5,  5,  0,-20,-40},
+        {-50,-40,-30,-30,-30,-30,-40,-50}
+    };
+    static const int bishopTable[8][8] = {
+        {-20,-10,-10,-10,-10,-10,-10,-20},
+        {-10,  0,  0,  0,  0,  0,  0,-10},
+        {-10,  0,  5, 10, 10,  5,  0,-10},
+        {-10,  5,  5, 10, 10,  5,  5,-10},
+        {-10,  0, 10, 10, 10, 10,  0,-10},
+        {-10, 10, 10, 10, 10, 10, 10,-10},
+        {-10,  5,  0,  0,  0,  0,  5,-10},
+        {-20,-10,-10,-10,-10,-10,-10,-20}
+    };
+    static const int rookTable[8][8] = {
+        {  0,  0,  0,  0,  0,  0,  0,  0},
+        {  5, 10, 10, 10, 10, 10, 10,  5},
+        { -5,  0,  0,  0,  0,  0,  0, -5},
+        { -5,  0,  0,  0,  0,  0,  0, -5},
+        { -5,  0,  0,  0,  0,  0,  0, -5},
+        { -5,  0,  0,  0,  0,  0,  0, -5},
+        { -5,  0,  0,  0,  0,  0,  0, -5},
+        {  0,  0,  0,  5,  5,  0,  0,  0}
+    };
+    static const int queenTable[8][8] = {
+        {-20,-10,-10, -5, -5,-10,-10,-20},
+        {-10,  0,  0,  0,  0,  0,  0,-10},
+        {-10,  5,  5,  5,  5,  5,  0,-10},
+        { -5,  0,  5,  5,  5,  5,  0, -5},
+        {  0,  0,  5,  5,  5,  5,  0, -5},
+        {-10,  5,  5,  5,  5,  5,  0,-10},
+        {-10,  0,  0,  0,  0,  0,  0,-10},
+        {-20,-10,-10, -5, -5,-10,-10,-20}
+    };
+    static const int kingTable[8][8] = {
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-20,-30,-30,-40,-40,-30,-30,-20},
+        {-10,-20,-20,-20,-20,-20,-20,-10},
+        { 20, 20,  0,  0,  0,  0, 20, 20},
+        { 20, 30, 10,  0,  0, 10, 30, 20}
+    };
+
+    const int (*table)[8] = nullptr;
+    switch(tolower(static_cast<unsigned char>(piece))){
+        case 'p': table = pawnTable; break;
+        case 'n': table = knightTable; break;
+        case 'b': table = bishopTable; break;
+        case 'r': table = rookTable; break;
+        case 'q': table = queenTable; break;
+        case 'k': table = kingTable; break;
+        default: return 0;
+    }
+
+    bool isWhite = isupper(static_cast<unsigned char>(piece));
+    int startTableRow = isWhite ? RowStart : 7- RowStart;
+    int endTableRow = isWhite ?  RowEnd : 7-RowEnd;
+    return table[endTableRow][ColEnd] - table[startTableRow][ColStart];
+}
+int score=3900; //baseline score at the start of the game, 3900 is the total value of all pieces excluding kings
+double evaluateMove(char board[8][8], Move m){
+    char moved = board[m.RowStart][m.ColStart];
+    char captured = board[m.RowEnd][m.ColEnd]; 
+    bool checkingWhite = isupper(board[m.RowStart][m.ColStart]); 
+    double net = Values(captured) + ValuesPosition(board, m.RowStart, m.ColStart, m.RowEnd, m.ColEnd, moved) / 100.0;
+    board[m.RowEnd][m.ColEnd] = moved;
+    board[m.RowStart][m.ColStart] = '.';
+    if(Checkmate(board, checkingWhite ? whitekingpos[0] : blackkingpos[0], checkingWhite ? whitekingpos[1] : blackkingpos[1], 0)){
+        net -= 10000; // Penalize moves that result in checkmate(lose)
+    }
+    if(Checkmate(board, checkingWhite ? blackkingpos[0] : whitekingpos[0], checkingWhite ? blackkingpos[1] : whitekingpos[1], 0)){
+        net += 10000; // Reward moves that result in checkmate(win) or stalemate boohoo
+    }
+    for(int row=0;row<8;row++){
+        for(int col=0;col<8;col++){
+            char piece = board[row][col];
+            if(piece == '.') continue;
+ 
+            bool isEnemy = checkingWhite ? islower(piece) : isupper(piece);
+            if(!isEnemy) continue;
+            switch(tolower(piece)){
+                case 'p': if(isValidPawnMove(board, row, col, m.RowEnd, m.ColEnd, piece))  net=net-Values(moved); break;
+                case 'r': if(isValidRookMove(board, row, col, m.RowEnd, m.ColEnd, piece))  net=net-Values(moved); break;
+                case 'n': if(isValidKnightMove(board, row, col, m.RowEnd, m.ColEnd, piece)) net=net-Values(moved); break;
+                case 'b': if(isValidBishopMove(board, row, col, m.RowEnd, m.ColEnd, piece)) net=net-Values(moved); break;
+                case 'q': if(isValidQueenMove(board, row, col, m.RowEnd, m.ColEnd, piece))  net=net-Values(moved); break;
+                case 'k': if(isValidKingMove(board, row, col, m.RowEnd, m.ColEnd, piece))   net=net-Values(moved); break;
+            }
+        }
+    }
+    board[m.RowStart][m.ColStart] = moved;
+    board[m.RowEnd][m.ColEnd] = captured;
+    return net;
+}
 int main(){
     char board[8][8] = {
         {'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'},
@@ -332,13 +482,47 @@ int main(){
         {'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'},
         {'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'}
     };
+    std::random_device rd;
+    std::mt19937 rng(rd());
     int counter=0;
     bool whiteTurn = true;
     while(true){
         BoardPrint(board);
         std::string move;
-        std::cout << (counter%2==0? "White's turn: " : "Black's turn: ");
-        std::cin >> move;
+        if(counter%2==0){
+            std::cout<<"White's move: ";
+            if(!(std::cin>>move)) break;
+        }
+        else{
+            std::vector<Move> legal = LegalMoveGenerator(board, blackkingpos[0], blackkingpos[1], counter);
+            if(legal.empty()) break;  
+            double best=-3900; // worst possible score
+            std::vector<Move> bestMoves;
+            for(int i=0;i<legal.size();i++){
+                double val = evaluateMove(board, legal[i]);
+                if(val>best){
+                    best=val;
+                    bestMoves.clear();
+                    bestMoves.push_back(legal[i]);
+                }
+                else if(val==best){
+                    bestMoves.push_back(legal[i]);
+                }
+            }
+            std::uniform_int_distribution<int> dist(0, bestMoves.size() - 1);
+            Move m = bestMoves[dist(rng)];
+            if(board[m.RowStart][m.ColStart]=='k' && m.ColStart==4 && abs(m.ColEnd - m.ColStart)==2){
+                move = (m.ColEnd==6) ? "O.O" : "O.O.O";
+            }
+            else{ 
+            move = "";
+            move += char('a' + m.ColStart);
+            move += char('0' + (8 - m.RowStart));
+            move += char('a' + m.ColEnd);
+            move += char('0' + (8 - m.RowEnd));
+            }
+            std::cout << "Black plays: " << move << "\n";
+        }
         if(move.length()!=4 && move != "O.O" && move != "O.O.O"){
             std::cout<<"Invalid move format. Please use format like e2e4 or O.O/O.O.O for castle.\n";
             continue;
@@ -395,7 +579,7 @@ int main(){
                 if(move=="O.O.O"){ board[RowStart][3]=board[RowStart][0]; board[RowStart][0]='.'; }
                 counter++;
                 std::string promotion;
-                if((moved=='P' || moved=='p') && (RowEnd==7 || RowEnd==0)){
+                if((moved=='P') && (RowEnd==0)){
                     bool done = false;
                     while(!done){
                         std::cout<<"Your pawn has reached the promotion square, please input the piece which u want to promote into.\n";
@@ -403,18 +587,18 @@ int main(){
                         std::cin>>promotion;
                         done = true;
                         if((promotion=="queen")  && (moved=='P'))board[RowEnd][ColEnd]='Q';
-                        else if((promotion=="queen")  && (moved=='p'))board[RowEnd][ColEnd]='q';
                         else if((promotion=="rook")  && (moved=='P'))board[RowEnd][ColEnd]='R';
-                        else if((promotion=="rook")  && (moved=='p'))board[RowEnd][ColEnd]='r';
                         else if((promotion=="knight")  && (moved=='P'))board[RowEnd][ColEnd]='N';
-                        else if((promotion=="knight")  && (moved=='p'))board[RowEnd][ColEnd]='n';
                         else if((promotion=="bishop")  && (moved=='P'))board[RowEnd][ColEnd]='B';
-                        else if((promotion=="bishop")  && (moved=='p'))board[RowEnd][ColEnd]='b';
                         else{
                             std::cout<<"Invalid promotion piece. Please try again.\n";
                             done = false;
                         }
                     }
+                }
+                if((moved=='p') && (RowEnd==7)){
+                    board[RowEnd][ColEnd]='q';
+                    std::cout<<"Black pawn promoted to queen.\n";
                 }
                 PawnValue = -1; // Reset PawnValue after the move
                 if((moved == 'P' || moved == 'p') && abs(RowStart - RowEnd) == 2){
