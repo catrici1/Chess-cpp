@@ -1,88 +1,39 @@
 # Chess-cpp
 
-A command-line chess game written in C++, where you play White against a simple bot that plays Black. There is also a small browser GUI that wraps the same program.
+A complete command-line chess engine written in C++ from scratch, where you play White against a Minimax + Alpha-Beta pruning AI playing Black. It also includes a standalone, mobile-friendly web port that can be played directly in your browser.
 
-> The GUI (`index.html` and `server.py`) was made with Claude. The chess engine (`chess.cpp`) is my own work.
+**Play online:** [https://chess-cpp.netlify.app/](https://chess-cpp.netlify.app/)
+
+> The chess engine (`chess.cpp`) is my own work. The standalone browser port was generated with AI based directly on my C++ engine logic.
 
 ## Files
 
 | File | What it is |
 |------|------------|
-| `chess.cpp` | The whole game: board, move rules, check/checkmate/stalemate, and the bot |
-| `server.py` | Small local web server that runs the compiled game and streams its output to the browser |
-| `index.html` | The browser GUI (clickable board) |
+| `chess.cpp` | The complete C++ game: 8x8 board representation, full move validation, check/checkmate/stalemate detection, evaluation tables, and Minimax AI with alpha-beta pruning |
 
-## What it does
+## Features
 
-- Prints the board in the terminal, with White at the bottom.
-- Validates moves for every piece: pawn, knight, bishop, rook, queen and king.
-- Supports castling, en passant and pawn promotion.
-- Rejects any move that leaves your own king in check.
-- Detects check, checkmate and stalemate.
-- You play White. The bot plays Black.
+- **Complete Chess Rules:** Full move validation for pawns, knights, bishops, rooks, queens, and kings, including kingside/queenside castling (`O.O` / `O.O.O`), en passant captures, and pawn promotion.
+- **Legal Move Enforcement:** Automatically blocks moves that leave or place your own king in check, and detects check, checkmate, and stalemate.
+- **Minimax AI with Alpha-Beta Pruning:** Searches ahead (`SEARCH_DEPTH = 3`, 4 plies total) using alpha-beta pruning to cut unpromising branches and pick the optimal move, breaking ties randomly.
+- **Positional & Material Evaluation:** Evaluates board states using standard material weights (`Q=900`, `R=500`, `B=300`, `N=300`, `P=100`) combined with mirrored 8x8 piece-square tables so pieces favor active squares and king safety.
+- **Cross-Platform Play:** Runs natively in any terminal via `g++` or directly in the browser on desktop and mobile without any backend server.
 
-### How the bot works
+## How to Play
 
-The bot is **greedy and looks only one move ahead**. For each legal move it scores:
+### Option 1: Play in Browser (Desktop & Mobile)
 
-- the value of the piece it would capture (queen 900, rook 500, bishop/knight 300, pawn 100);
-- a small bonus or penalty from piece-square tables (pieces prefer good squares);
-- a penalty if the moved piece can be captured on the destination square;
-- a big bonus for checkmating the opponent.
+Open **[https://chess-cpp.netlify.app/](https://chess-cpp.netlify.app/)** — no installation or local server required.
 
-It plays the best-scoring move and picks randomly between ties. It does not plan ahead, so it is easy to trick. A Black pawn that reaches the last row is always promoted to a queen.
+- Tap or click one of your pieces to see highlighted legal moves, then tap the destination square.
+- Castling: select your king, then tap `g1` or `c1`[cite: 2].
+- Pawn promotion: select your desired piece from the pop-up prompt when reaching the 8th rank[cite: 2].
 
-## Requirements
+### Option 2: Run in Terminal (C++)
 
-- **A C++ compiler**: `g++` (any version that supports C++17).
-- **Python 3**: only for the GUI. It uses only the standard library, so there is nothing to `pip install`.
-- **A modern web browser**: only for the GUI.
-- **Linux or macOS** for the GUI. `server.py` uses the Unix-only `pty` module. On Windows, use WSL.
+Requires `g++` with C++17 support[cite: 2]. Compile with `-O2` for optimal search speed:
 
-The terminal version needs only `g++`.
-
-## How to play
-
-### Terminal
-
-```
-g++ -std=c++17 chess.cpp -o chess
+```bash
+g++ -std=c++17 -O2 chess.cpp -o chess
 ./chess
-```
-
-Rules for input:
-
-- Type a move as the start and end square: `e2e4`.
-- Use lowercase letters `a-h` and numbers `1-8`.
-- Castling: `O.O` for kingside and `O.O.O` for queenside (the letter O, with dots).
-- Promotion: when your pawn reaches the last row, type `queen`, `rook`, `knight` or `bishop` (lowercase).
-- Illegal moves are rejected and you can try again.
-- Press `Ctrl+C` to quit.
-
-### Browser GUI
-
-```
-python3 server.py          # compiles chess.cpp if needed, then serves the GUI
-python3 server.py 9000     # optional: use a different port
-```
-
-Then open http://127.0.0.1:8000.
-
-- Click one of your pieces, then click the square to move to.
-- Click the same piece again to deselect it.
-- Castling: click the king, then the castling square (`g1` or `c1`).
-- Promotion: buttons for the piece appear when needed.
-- The box under the terminal accepts raw input such as `e2e4`.
-- **New game** restarts the program.
-- Stop the server with `Ctrl+C`.
-
-The server only listens on `127.0.0.1`, so the GUI works only on the computer running it, not on other devices.
-
-## Still to do
-
-- [ ] Minimax search, so the bot can think several moves ahead
-- [ ] Alpha-beta pruning, to make that search fast
-- [ ] Draw rules: threefold repetition, fifty-move rule, insufficient material
-- [ ] Let the bot choose its promotion piece instead of always taking a queen
-- [ ] A better position evaluation
-- [ ] More testing and bug fixes
