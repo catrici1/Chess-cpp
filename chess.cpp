@@ -1,4 +1,5 @@
 #include <iostream>
+#include<bits/stdc++.h>
 #include <string>
 #include <cstdlib>
 #include <cctype> 
@@ -358,7 +359,10 @@ int Values(char p){
     if(p=='P' || p=='p') return 100;
     return 0;
 }
+<<<<<<< HEAD
 int ValuesPosition(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+=======
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
     static const int pawnTable[8][8] = {
         {  0,  0,  0,  0,  0,  0,  0,  0},
         { 50, 50, 50, 50, 50, 50, 50, 50},
@@ -366,7 +370,11 @@ int ValuesPosition(char board[8][8], int RowStart, int ColStart, int RowEnd, int
         {  5,  5, 10, 25, 25, 10,  5,  5},
         {  0,  0,  0, 20, 20,  0,  0,  0},
         {  5, -5,-10,  0,  0,-10, -5,  5},
+<<<<<<< HEAD
         {  50, 50, 10,-20,-20, 10, 10,  5},
+=======
+        {  5, 10, 10,-20,-20, 10, 10,  5},
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
         {  0,  0,  0,  0,  0,  0,  0,  0}
     };
     static const int knightTable[8][8] = {
@@ -420,6 +428,10 @@ int ValuesPosition(char board[8][8], int RowStart, int ColStart, int RowEnd, int
         { 20, 30, 10,  0,  0, 10, 30, 20}
     };
 
+<<<<<<< HEAD
+=======
+int ValuesPosition(char board[8][8], int RowStart, int ColStart, char piece){
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
     const int (*table)[8] = nullptr;
     switch(tolower(static_cast<unsigned char>(piece))){
         case 'p': table = pawnTable; break;
@@ -432,6 +444,7 @@ int ValuesPosition(char board[8][8], int RowStart, int ColStart, int RowEnd, int
     }
 
     bool isWhite = isupper(static_cast<unsigned char>(piece));
+<<<<<<< HEAD
     int startTableRow = isWhite ? RowStart : 7- RowStart;
     int endTableRow = isWhite ?  RowEnd : 7-RowEnd;
     return table[endTableRow][ColEnd] - table[startTableRow][ColStart];
@@ -471,6 +484,111 @@ double evaluateMove(char board[8][8], Move m){
     board[m.RowEnd][m.ColEnd] = captured;
     return net;
 }
+=======
+    int tableRow = isWhite ? RowStart : 7 - RowStart;
+    return table[tableRow][ColStart];
+}
+int evaluatePosition(char board[8][8]){
+    int score = 0;
+    for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+            char piece = board[row][col];
+            if (piece == '.') continue;
+
+            int positionalValue = ValuesPosition(board, row, col, piece);
+            if (islower(static_cast<unsigned char>(piece))) {
+                score += Values(piece) + positionalValue;
+            } else {
+                score -= Values(piece) + positionalValue;
+            }
+        }
+    }
+    return score;
+}
+int score=3900; //baseline score at the start of the game, 3900 is the total value of all pieces excluding kings
+void findKing(char board[8][8], int &row, int &col,int counter){
+    for(int i=0;i<8;i++){
+        for(int j=0;j<8;j++){
+            if(counter%2==0&& board[i][j]=='K'){
+                row=i;
+                col=j;
+                return;
+            }
+            if(counter%2!=0&& board[i][j]=='k'){
+                row=i;
+                col=j;
+                return;
+            }
+        }
+    }
+}
+///minimax algorithm to evaluate the best move for the AI
+const int MIN_SCORE = -100000;
+const int MAX_SCORE = 100000;
+int minimax(char board[8][8], int depth, bool maximizing, int alpha, int beta, int counter){
+    if (depth == 0) return evaluatePosition(board);
+    int kingRow=-1;
+    int kingCol=-1;
+    findKing(board, kingRow, kingCol, counter);
+    std::vector<Move> legal = LegalMoveGenerator(board, kingRow, kingCol, counter);
+    if (maximizing)
+    {
+        int best = MIN_SCORE;
+        // Recur for left and right children
+        if (legal.empty()) {
+            if (isInCheck(board, kingRow, kingCol)) {
+                return -(10000 + depth);//checkmate
+
+            } else {
+                return 0;  // stalemate
+            }
+        }
+        for (int i = 0; i < legal.size(); i++){
+            Move m = legal[i];
+            char newBoard[8][8];
+            memcpy(newBoard, board, sizeof(newBoard));
+            newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
+            newBoard[m.RowStart][m.ColStart] = '.';
+            int val = minimax(newBoard, depth - 1, false, alpha, beta, counter+1);
+            best = std::max(best, val);
+            alpha = std::max(alpha, best);
+            if (beta <= alpha) break;
+        }
+    return best;
+    }
+    else
+    {
+        int best = MAX_SCORE;
+        // Recur for left and right children
+        if (legal.empty()) {
+            if (isInCheck(board, kingRow, kingCol)) {
+                return +(10000 + depth);//checkmate
+
+            } else {
+                return 0;  // stalemate
+            }
+        }
+        for (int i = 0; i < legal.size(); i++)
+        {
+            Move m = legal[i];
+            char newBoard[8][8];
+            memcpy(newBoard, board, sizeof(newBoard));
+            newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
+            newBoard[m.RowStart][m.ColStart] = '.';
+            int val = minimax(newBoard, depth - 1, true, alpha, beta, counter+1);
+            best = std::min(best, val);
+            beta = std::min(beta, best);
+
+            // Alpha Beta Pruning
+            if (beta <= alpha)
+                break;
+        }
+        return best;
+    }
+
+}
+const int SEARCH_DEPTH = 3; //depth of the minimax search tree
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
 int main(){
     char board[8][8] = {
         {'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'},
@@ -496,10 +614,30 @@ int main(){
         else{
             std::vector<Move> legal = LegalMoveGenerator(board, blackkingpos[0], blackkingpos[1], counter);
             if(legal.empty()) break;  
+<<<<<<< HEAD
             double best=-3900; // worst possible score
             std::vector<Move> bestMoves;
             for(int i=0;i<legal.size();i++){
                 double val = evaluateMove(board, legal[i]);
+=======
+            int best=MIN_SCORE; // worst possible score
+            std::vector<Move> bestMoves;
+            auto start = std::chrono::steady_clock::now();
+            for(int i=0;i<legal.size();i++){
+                Move m = legal[i];
+                char newBoard[8][8];
+                memcpy(newBoard, board, sizeof(newBoard));
+                newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
+                newBoard[m.RowStart][m.ColStart] = '.';
+                char piece = newBoard[m.RowEnd][m.ColEnd];
+                if(piece=='p' && m.RowEnd==7){
+                    newBoard[m.RowEnd][m.ColEnd]='q';
+                }
+                if(piece=='P' && m.RowEnd==0){
+                    newBoard[m.RowEnd][m.ColEnd]='Q';
+                }
+                int val = minimax(newBoard, SEARCH_DEPTH, false, MIN_SCORE, MAX_SCORE, counter+1);
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
                 if(val>best){
                     best=val;
                     bestMoves.clear();
@@ -509,6 +647,12 @@ int main(){
                     bestMoves.push_back(legal[i]);
                 }
             }
+<<<<<<< HEAD
+=======
+            auto end = std::chrono::steady_clock::now();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "Search took " << ms << " ms\n";
+>>>>>>> d8d0e62 (Added minimax+alpha beta pruning)
             std::uniform_int_distribution<int> dist(0, bestMoves.size() - 1);
             Move m = bestMoves[dist(rng)];
             if(board[m.RowStart][m.ColStart]=='k' && m.ColStart==4 && abs(m.ColEnd - m.ColStart)==2){
