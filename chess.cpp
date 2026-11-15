@@ -1,132 +1,247 @@
 #include <iostream>
-#include<bits/stdc++.h>
 #include <string>
 #include <cstdlib>
-#include <cctype> 
+#include <cctype>
+#include <cstring>
 #include <vector>
 #include <algorithm>
 #include <random>
-int whitekingpos[2]={7,4};
-int blackkingpos[2]={0,4};
-bool isincheck=false;
-void BoardPrint(char board[8][8]){
-    std::cout<<"  a b c d e f g h\n";
-    for(int i=0;i<8;i++){
-        std::cout<<8-i<< " "; 
-        for(int j=0;j<8;j++){
-            std::cout<<board[i][j]<<" ";
+#include <chrono>
+
+// ============================================================================
+// Global Game State
+// ============================================================================
+
+int whitekingpos[2] = {7, 4};
+int blackkingpos[2] = {0, 4};
+int PawnValue = -1; // -1 if no double pawn push happened last turn, otherwise 0-7 (column)
+
+bool whiteKingMoved = false, blackKingMoved = false;
+bool whiteRookHMoved = false, whiteRookAMoved = false;
+bool blackRookHMoved = false, blackRookAMoved = false;
+
+const int MIN_SCORE = -100000;
+const int MAX_SCORE = 100000;
+const int SEARCH_DEPTH = 3; // Depth of the minimax search tree
+
+struct Move {
+    int RowStart;
+    int ColStart;
+    int RowEnd;
+    int ColEnd;
+};
+
+// ============================================================================
+// Piece-Square Tables (Positional Evaluation Bonuses)
+// ============================================================================
+
+static const int pawnTable[8][8] = {
+    {  0,  0,  0,  0,  0,  0,  0,  0},
+    { 50, 50, 50, 50, 50, 50, 50, 50},
+    { 10, 10, 20, 30, 30, 20, 10, 10},
+    {  5,  5, 10, 25, 25, 10,  5,  5},
+    {  0,  0,  0, 20, 20,  0,  0,  0},
+    {  5, -5,-10,  0,  0,-10, -5,  5},
+    {  5, 10, 10,-20,-20, 10, 10,  5},
+    {  0,  0,  0,  0,  0,  0,  0,  0}
+};
+
+static const int knightTable[8][8] = {
+    {-50,-40,-30,-30,-30,-30,-40,-50},
+    {-40,-20,  0,  0,  0,  0,-20,-40},
+    {-30,  0, 10, 15, 15, 10,  0,-30},
+    {-30,  5, 15, 20, 20, 15,  5,-30},
+    {-30,  0, 15, 20, 20, 15,  0,-30},
+    {-30,  5, 10, 15, 15, 10,  5,-30},
+    {-40,-20,  0,  5,  5,  0,-20,-40},
+    {-50,-40,-30,-30,-30,-30,-40,-50}
+};
+
+static const int bishopTable[8][8] = {
+    {-20,-10,-10,-10,-10,-10,-10,-20},
+    {-10,  0,  0,  0,  0,  0,  0,-10},
+    {-10,  0,  5, 10, 10,  5,  0,-10},
+    {-10,  5,  5, 10, 10,  5,  5,-10},
+    {-10,  0, 10, 10, 10, 10,  0,-10},
+    {-10, 10, 10, 10, 10, 10, 10,-10},
+    {-10,  5,  0,  0,  0,  0,  5,-10},
+    {-20,-10,-10,-10,-10,-10,-10,-20}
+};
+
+static const int rookTable[8][8] = {
+    {  0,  0,  0,  0,  0,  0,  0,  0},
+    {  5, 10, 10, 10, 10, 10, 10,  5},
+    { -5,  0,  0,  0,  0,  0,  0, -5},
+    { -5,  0,  0,  0,  0,  0,  0, -5},
+    { -5,  0,  0,  0,  0,  0,  0, -5},
+    { -5,  0,  0,  0,  0,  0,  0, -5},
+    { -5,  0,  0,  0,  0,  0,  0, -5},
+    {  0,  0,  0,  5,  5,  0,  0,  0}
+};
+
+static const int queenTable[8][8] = {
+    {-20,-10,-10, -5, -5,-10,-10,-20},
+    {-10,  0,  0,  0,  0,  0,  0,-10},
+    {-10,  5,  5,  5,  5,  5,  0,-10},
+    { -5,  0,  5,  5,  5,  5,  0, -5},
+    {  0,  0,  5,  5,  5,  5,  0, -5},
+    {-10,  5,  5,  5,  5,  5,  0,-10},
+    {-10,  0,  0,  0,  0,  0,  0,-10},
+    {-20,-10,-10, -5, -5,-10,-10,-20}
+};
+
+static const int kingTable[8][8] = {
+    {-30,-40,-40,-50,-50,-40,-40,-30},
+    {-30,-40,-40,-50,-50,-40,-40,-30},
+    {-30,-40,-40,-50,-50,-40,-40,-30},
+    {-30,-40,-40,-50,-50,-40,-40,-30},
+    {-20,-30,-30,-40,-40,-30,-30,-20},
+    {-10,-20,-20,-20,-20,-20,-20,-10},
+    { 20, 20,  0,  0,  0,  0, 20, 20},
+    { 20, 30, 10,  0,  0, 10, 30, 20}
+};
+
+// ============================================================================
+// Board Display
+// ============================================================================
+
+void BoardPrint(char board[8][8]) {
+    std::cout << "  a b c d e f g h\n";
+    for (int i = 0; i < 8; i++) {
+        std::cout << 8 - i << " ";
+        for (int j = 0; j < 8; j++) {
+            std::cout << board[i][j] << " ";
         }
-        std::cout<<8-i<<"\n";
+        std::cout << 8 - i << "\n";
     }
-    std::cout<<"  a b c d e f g h\n";
+    std::cout << "  a b c d e f g h\n";
 }
-bool isValidKingMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+
+// ============================================================================
+// Piece-Specific Movement Validation
+// ============================================================================
+
+bool isValidKingMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
     char target = board[RowEnd][ColEnd];
- 
-    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') || (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
+
+    // Prevent capturing a friendly piece
+    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') ||
+                          (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
         return false;
     }
+
     int colDiff = abs(ColEnd - ColStart);
     int rowDiff = abs(RowEnd - RowStart);
-    if((RowStart==RowEnd && colDiff==1) || (ColStart==ColEnd && rowDiff==1) || (colDiff==1 && rowDiff==1)){
+
+    // King moves 1 square in any direction
+    if ((RowStart == RowEnd && colDiff == 1) ||
+        (ColStart == ColEnd && rowDiff == 1) ||
+        (colDiff == 1 && rowDiff == 1)) {
         return true;
     }
     return false;
 }
-int PawnValue=-1; // -1 for none value, 0-7 for new move and column
-bool PawnPromotion=false;
-bool isValidPawnMove(char board[8][8],int RowStart, int ColStart,int  RowEnd,int  ColEnd,char piece){
+
+bool isValidPawnMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
     int direction = (piece == 'P') ? -1 : 1;
-    
-    if(ColEnd == ColStart && RowEnd == RowStart + direction && board[RowEnd][ColEnd] == '.'){
+
+    // 1. Standard 1-square forward push
+    if (ColEnd == ColStart && RowEnd == RowStart + direction && board[RowEnd][ColEnd] == '.') {
         return true;
     }
- 
+
+    // 2. Initial 2-square forward push from starting rank
     int startRow = (piece == 'P') ? 6 : 1;
-    if(ColEnd == ColStart && RowStart == startRow && RowEnd == RowStart + (2 * direction) &&
-        board[RowStart + direction][ColStart] == '.' && board[RowEnd][ColEnd] == '.'){
+    if (ColEnd == ColStart && RowStart == startRow && RowEnd == RowStart + (2 * direction) &&
+        board[RowStart + direction][ColStart] == '.' && board[RowEnd][ColEnd] == '.') {
         return true;
     }
 
-
-    int captured = board[RowEnd][ColEnd];  // en passant logic
-    if(RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) && 
-    ((piece == 'P' && captured=='.' && (board[RowStart][ColEnd])=='p' && PawnValue==ColEnd) || (piece == 'p' && captured=='.' && (board[RowStart][ColEnd])=='P' && PawnValue==ColEnd))){
+    // 3. En passant capture
+    int captured = board[RowEnd][ColEnd];
+    if (RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) &&
+        ((piece == 'P' && captured == '.' && board[RowStart][ColEnd] == 'p' && PawnValue == ColEnd) ||
+         (piece == 'p' && captured == '.' && board[RowStart][ColEnd] == 'P' && PawnValue == ColEnd))) {
         return true;
     }
 
-
-    if(RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) && board[RowEnd][ColEnd] != '.' && ((piece == 'P' && islower(board[RowEnd][ColEnd])) || (piece == 'p' && isupper(board[RowEnd][ColEnd])))){
+    // 4. Standard diagonal capture
+    if (RowStart + direction == RowEnd && (ColEnd == ColStart + 1 || ColEnd == ColStart - 1) &&
+        board[RowEnd][ColEnd] != '.' &&
+        ((piece == 'P' && islower(board[RowEnd][ColEnd])) ||
+         (piece == 'p' && isupper(board[RowEnd][ColEnd])))) {
         return true;
     }
+
     return false;
 }
-bool isValidKnightMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+
+bool isValidKnightMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
     char target = board[RowEnd][ColEnd];
- 
-    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') || (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
+
+    // Prevent capturing a friendly piece
+    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') ||
+                          (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
         return false;
     }
- 
+
     int colDiff = abs(ColEnd - ColStart);
     int rowDiff = abs(RowEnd - RowStart);
- 
+
+    // L-shaped jump
     if ((colDiff == 2 && rowDiff == 1) || (colDiff == 1 && rowDiff == 2)) {
         return true;
     }
- 
+
     return false;
 }
-bool isValidBishopMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+
+bool isValidBishopMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
     int colDiff = abs(ColEnd - ColStart);
     int rowDiff = abs(RowEnd - RowStart);
-    if(colDiff != rowDiff) return false;
+    if (colDiff != rowDiff) return false;
 
     char target = board[RowEnd][ColEnd];
- 
-    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') || (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
+
+    // Prevent capturing a friendly piece
+    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') ||
+                          (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
         return false;
     }
-    if(ColEnd<ColStart && RowEnd<RowStart){
-        for(int i=1;i<abs(ColEnd-ColStart);i++){
-            if(board[RowStart-i][ColStart-i]!='.'){
-                return false;
-            }
+
+    // Check all four diagonal directions for blocking pieces
+    if (ColEnd < ColStart && RowEnd < RowStart) {
+        for (int i = 1; i < abs(ColEnd - ColStart); i++) {
+            if (board[RowStart - i][ColStart - i] != '.') return false;
+        }
+    } else if (ColEnd > ColStart && RowEnd > RowStart) {
+        for (int i = 1; i < abs(ColEnd - ColStart); i++) {
+            if (board[RowStart + i][ColStart + i] != '.') return false;
+        }
+    } else if (ColEnd < ColStart && RowEnd > RowStart) {
+        for (int i = 1; i < abs(ColEnd - ColStart); i++) {
+            if (board[RowStart + i][ColStart - i] != '.') return false;
+        }
+    } else if (ColEnd > ColStart && RowEnd < RowStart) {
+        for (int i = 1; i < abs(ColEnd - ColStart); i++) {
+            if (board[RowStart - i][ColStart + i] != '.') return false;
         }
     }
-    else if(ColEnd>ColStart && RowEnd>RowStart){
-        for(int i=1;i<abs(ColEnd-ColStart);i++){
-            if(board[RowStart+i][ColStart+i]!='.'){
-                return false;
-            }
-        }
-    }
-    else if(ColEnd<ColStart && RowEnd>RowStart){
-        for(int i=1;i<abs(ColEnd-ColStart);i++){
-            if(board[RowStart+i][ColStart-i]!='.'){
-                return false;
-            }
-        }
-    }
-    else if(ColEnd>ColStart && RowEnd<RowStart){
-        for(int i=1;i<abs(ColEnd-ColStart);i++){
-            if(board[RowStart-i][ColStart+i]!='.'){
-                return false;
-            }
-        }
-    }
+
     return true;
 }
-bool isValidRookMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
+
+bool isValidRookMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
     if (RowStart == RowEnd && ColStart == ColEnd) return false;
- 
     if (RowStart != RowEnd && ColStart != ColEnd) return false;
- 
+
     char target = board[RowEnd][ColEnd];
-    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') || (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
+    if (target != '.' && ((piece >= 'A' && piece <= 'Z' && target >= 'A' && target <= 'Z') ||
+                          (piece >= 'a' && piece <= 'z' && target >= 'a' && target <= 'z'))) {
         return false;
     }
- 
+
+    // Check horizontal or vertical path for blocking pieces
     if (RowStart == RowEnd) {
         int step = (ColEnd > ColStart) ? 1 : -1;
         for (int c = ColStart + step; c != ColEnd; c += step) {
@@ -138,147 +253,139 @@ bool isValidRookMove(char board[8][8], int RowStart, int ColStart, int RowEnd, i
             if (board[r][ColStart] != '.') return false;
         }
     }
- 
+
     return true;
 }
-bool isValidQueenMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece){
-    return isValidRookMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) || 
+
+bool isValidQueenMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, char piece) {
+    return isValidRookMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) ||
            isValidBishopMove(board, RowStart, ColStart, RowEnd, ColEnd, piece);
 }
- 
-bool isInCheck(char board[8][8], int kingRow, int kingCol){
+
+// ============================================================================
+// Check, Turn, Castling & Legal Move Generation
+// ============================================================================
+
+// Returns true if the king at (kingRow, kingCol) is attacked by any enemy piece
+bool isInCheck(char board[8][8], int kingRow, int kingCol) {
     bool checkingWhite = isupper(board[kingRow][kingCol]);
- 
-    for(int row = 0; row < 8; row++){
-        for(int col = 0; col < 8; col++){
+
+    for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
             char piece = board[row][col];
-            if(piece == '.') continue;
- 
+            if (piece == '.') continue;
+
             bool isEnemy = checkingWhite ? islower(piece) : isupper(piece);
-            if(!isEnemy) continue;
- 
-            switch(tolower(piece)){
-                case 'p': if(isValidPawnMove(board, row, col, kingRow, kingCol, piece))   return true; break;
-                case 'r': if(isValidRookMove(board, row, col, kingRow, kingCol, piece))   return true; break;
-                case 'n': if(isValidKnightMove(board, row, col, kingRow, kingCol, piece)) return true; break;
-                case 'b': if(isValidBishopMove(board, row, col, kingRow, kingCol, piece)) return true; break;
-                case 'q': if(isValidQueenMove(board, row, col, kingRow, kingCol, piece))  return true; break;
-                case 'k': if(isValidKingMove(board, row, col, kingRow, kingCol, piece))   return true; break;
+            if (!isEnemy) continue;
+
+            switch (tolower(piece)) {
+                case 'p': if (isValidPawnMove(board, row, col, kingRow, kingCol, piece))   return true; break;
+                case 'r': if (isValidRookMove(board, row, col, kingRow, kingCol, piece))   return true; break;
+                case 'n': if (isValidKnightMove(board, row, col, kingRow, kingCol, piece)) return true; break;
+                case 'b': if (isValidBishopMove(board, row, col, kingRow, kingCol, piece)) return true; break;
+                case 'q': if (isValidQueenMove(board, row, col, kingRow, kingCol, piece))  return true; break;
+                case 'k': if (isValidKingMove(board, row, col, kingRow, kingCol, piece))   return true; break;
             }
         }
     }
     return false;
 }
-bool validTurn(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter){
-    if(isupper(board[RowStart][ColStart])&& counter%2==0)return true;
-    if(isupper(board[RowStart][ColStart])&& counter%2!=0)return false;
-    if(islower(board[RowStart][ColStart])&& counter%2!=0)return true;
-    if(islower(board[RowStart][ColStart])&& counter%2==0)return false;
+
+// Verifies that the selected piece belongs to the side whose turn it is
+bool validTurn(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter) {
+    if (isupper(board[RowStart][ColStart]) && counter % 2 == 0) return true;
+    if (isupper(board[RowStart][ColStart]) && counter % 2 != 0) return false;
+    if (islower(board[RowStart][ColStart]) && counter % 2 != 0) return true;
+    if (islower(board[RowStart][ColStart]) && counter % 2 == 0) return false;
     return false;
 }
-bool whiteKingMoved=false, blackKingMoved=false;
-bool whiteRookHMoved=false, whiteRookAMoved=false; 
-bool blackRookHMoved=false, blackRookAMoved=false;
-bool kingSafeAt(char board[8][8], int row, int col, char king){
+
+// Temporarily places the king on (row, col) to test if it would be in check
+bool kingSafeAt(char board[8][8], int row, int col, char king) {
     char saved = board[row][col];
     board[row][col] = king;
     bool safe = !isInCheck(board, row, col);
     board[row][col] = saved;
     return safe;
 }
-bool isValidCastle(char board[8][8], const std::string &move, int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter){
-    if(move=="O.O" && counter%2==0){
-        if(!whiteKingMoved && !whiteRookHMoved && board[7][4]=='K' && board[7][7]=='R' &&
-           board[7][5]=='.' && board[7][6]=='.' &&
-           kingSafeAt(board,7,4,'K') && kingSafeAt(board,7,5,'K') && kingSafeAt(board,7,6,'K')){
+
+// Validates kingside ("O.O") and queenside ("O.O.O") castling rights, path, and check safety
+bool isValidCastle(char board[8][8], const std::string &move, int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter) {
+    if (move == "O.O" && counter % 2 == 0) {
+        if (!whiteKingMoved && !whiteRookHMoved && board[7][4] == 'K' && board[7][7] == 'R' &&
+            board[7][5] == '.' && board[7][6] == '.' &&
+            kingSafeAt(board, 7, 4, 'K') && kingSafeAt(board, 7, 5, 'K') && kingSafeAt(board, 7, 6, 'K')) {
             return true;
         }
     }
-    if(move=="O.O.O" && counter%2==0){
-        if(!whiteKingMoved && !whiteRookAMoved && board[7][4]=='K' && board[7][0]=='R' &&
-           board[7][1]=='.' && board[7][2]=='.' && board[7][3]=='.' &&
-           kingSafeAt(board,7,4,'K') && kingSafeAt(board,7,3,'K') && kingSafeAt(board,7,2,'K')){
+    if (move == "O.O.O" && counter % 2 == 0) {
+        if (!whiteKingMoved && !whiteRookAMoved && board[7][4] == 'K' && board[7][0] == 'R' &&
+            board[7][1] == '.' && board[7][2] == '.' && board[7][3] == '.' &&
+            kingSafeAt(board, 7, 4, 'K') && kingSafeAt(board, 7, 3, 'K') && kingSafeAt(board, 7, 2, 'K')) {
             return true;
         }
     }
-    if(move=="O.O" && counter%2!=0){
-        if(!blackKingMoved && !blackRookHMoved && board[0][4]=='k' && board[0][7]=='r' &&
-           board[0][5]=='.' && board[0][6]=='.' &&
-           kingSafeAt(board,0,4,'k') && kingSafeAt(board,0,5,'k') && kingSafeAt(board,0,6,'k')){
+    if (move == "O.O" && counter % 2 != 0) {
+        if (!blackKingMoved && !blackRookHMoved && board[0][4] == 'k' && board[0][7] == 'r' &&
+            board[0][5] == '.' && board[0][6] == '.' &&
+            kingSafeAt(board, 0, 4, 'k') && kingSafeAt(board, 0, 5, 'k') && kingSafeAt(board, 0, 6, 'k')) {
             return true;
         }
     }
-    if(move=="O.O.O" && counter%2!=0){
-        if(!blackKingMoved && !blackRookAMoved && board[0][4]=='k' && board[0][0]=='r' &&
-           board[0][1]=='.' && board[0][2]=='.' && board[0][3]=='.' &&
-           kingSafeAt(board,0,4,'k') && kingSafeAt(board,0,3,'k') && kingSafeAt(board,0,2,'k')){
+    if (move == "O.O.O" && counter % 2 != 0) {
+        if (!blackKingMoved && !blackRookAMoved && board[0][4] == 'k' && board[0][0] == 'r' &&
+            board[0][1] == '.' && board[0][2] == '.' && board[0][3] == '.' &&
+            kingSafeAt(board, 0, 4, 'k') && kingSafeAt(board, 0, 3, 'k') && kingSafeAt(board, 0, 2, 'k')) {
             return true;
         }
     }
     return false;
 }
-bool isValidMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter, const std::string &move){
-    if(move=="O.O" || move=="O.O.O") return isValidCastle(board, move, RowStart, ColStart, RowEnd, ColEnd, counter);
+
+// Dispatches move validation to the appropriate piece rule
+bool isValidMove(char board[8][8], int RowStart, int ColStart, int RowEnd, int ColEnd, const int &counter, const std::string &move) {
+    if (move == "O.O" || move == "O.O.O") {
+        return isValidCastle(board, move, RowStart, ColStart, RowEnd, ColEnd, counter);
+    }
+
     char piece = board[RowStart][ColStart];
-    if(piece=='.')return false;
-    if(piece=='p'|| piece=='P' ){
-        if((isValidPawnMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }
-        else{
-            return false;
-        }
+    if (piece == '.') return false;
+
+    if (piece == 'p' || piece == 'P') {
+        return isValidPawnMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
-    if(piece=='r' || piece=='R' ){
-        if((isValidRookMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }else{
-            return false;
-        }
+    if (piece == 'r' || piece == 'R') {
+        return isValidRookMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
-    if(piece=='n' || piece=='N' ){
-        if((isValidKnightMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }else{
-            return false;
-        }
+    if (piece == 'n' || piece == 'N') {
+        return isValidKnightMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
-    if(piece=='b' || piece=='B' ){
-        if((isValidBishopMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }else{
-            return false;
-        }
+    if (piece == 'b' || piece == 'B') {
+        return isValidBishopMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
-    if(piece=='q' || piece=='Q' ){
-        if((isValidQueenMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }else{
-            return false;
-        }
+    if (piece == 'q' || piece == 'Q') {
+        return isValidQueenMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
-    if(piece=='k' || piece=='K' ){
-        if((isValidKingMove(board, RowStart, ColStart, RowEnd, ColEnd, piece))&& (validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter))){
-            return true;
-        }else{
-            return false;
-        }
+    if (piece == 'k' || piece == 'K') {
+        return isValidKingMove(board, RowStart, ColStart, RowEnd, ColEnd, piece) &&
+               validTurn(board, RowStart, ColStart, RowEnd, ColEnd, counter);
     }
     return false;
 }
-struct Move {
-    int RowStart;
-    int ColStart;
-    int RowEnd;
-    int ColEnd;
-};
-std::vector <Move> getAllPossibleMoves(char board[8][8], int RowStart, int ColStart, const int &counter){
-    std::vector <Move> moves;
-    for(RowStart=0;RowStart<8;RowStart++){
-        for(ColStart=0;ColStart<8;ColStart++){       
-            for(int i=0;i<8;i++){
-                for(int j=0;j<8;j++){
-                    if(isValidMove(board, RowStart, ColStart, i, j, counter, "")){
+
+// Generates all pseudo-legal moves (ignoring whether the king is left in check)
+std::vector<Move> getAllPossibleMoves(char board[8][8], int RowStart, int ColStart, const int &counter) {
+    std::vector<Move> moves;
+    for (RowStart = 0; RowStart < 8; RowStart++) {
+        for (ColStart = 0; ColStart < 8; ColStart++) {
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if (isValidMove(board, RowStart, ColStart, i, j, counter, "")) {
                         Move m;
                         m.RowStart = RowStart;
                         m.ColStart = ColStart;
@@ -286,143 +393,98 @@ std::vector <Move> getAllPossibleMoves(char board[8][8], int RowStart, int ColSt
                         m.ColEnd = j;
                         moves.push_back(m);
                     }
-                }       
+                }
             }
-        } 
-    }  
-    int row = (counter%2==0) ? 7 : 0;
-    if(isValidMove(board, row, 4, row, 6, counter, "O.O"))   moves.push_back({row, 4, row, 6});
-    if(isValidMove(board, row, 4, row, 2, counter, "O.O.O")) moves.push_back({row, 4, row, 2});
+        }
+    }
+
+    int row = (counter % 2 == 0) ? 7 : 0;
+    if (isValidMove(board, row, 4, row, 6, counter, "O.O"))   moves.push_back({row, 4, row, 6});
+    if (isValidMove(board, row, 4, row, 2, counter, "O.O.O")) moves.push_back({row, 4, row, 2});
     return moves;
 }
 
-bool Checkmate(char board[8][8], int RowStart, int ColStart, const int &counter){
-    std::vector <Move> moves=getAllPossibleMoves(board, RowStart, ColStart, counter);
-    std::vector <Move> validMoves;
-    for(int i=0;i<moves.size();i++){
-        Move m=moves[i];
-        char moved= board[m.RowStart][m.ColStart];
+// Returns true if the side to move has zero legal moves (checkmate or stalemate)
+bool Checkmate(char board[8][8], int RowStart, int ColStart, const int &counter) {
+    std::vector<Move> moves = getAllPossibleMoves(board, RowStart, ColStart, counter);
+    std::vector<Move> validMoves;
+
+    for (int i = 0; i < moves.size(); i++) {
+        Move m = moves[i];
+        char moved = board[m.RowStart][m.ColStart];
         char captured = board[m.RowEnd][m.ColEnd];
+
+        // Make move temporarily
         board[m.RowEnd][m.ColEnd] = moved;
         board[m.RowStart][m.ColStart] = '.';
+
         int kingRow = RowStart;
         int kingCol = ColStart;
-        if(moved == 'K' || moved == 'k'){
+        if (moved == 'K' || moved == 'k') {
             kingRow = m.RowEnd;
             kingCol = m.ColEnd;
         }
-        if(!isInCheck(board, kingRow, kingCol)){
+
+        if (!isInCheck(board, kingRow, kingCol)) {
             validMoves.push_back(m);
-            board[m.RowStart][m.ColStart] = moved;
-            board[m.RowEnd][m.ColEnd] = captured;
         }
-        else {
-            board[m.RowStart][m.ColStart] = moved;
-            board[m.RowEnd][m.ColEnd] = captured;
-        }
+
+        // Undo move
+        board[m.RowStart][m.ColStart] = moved;
+        board[m.RowEnd][m.ColEnd] = captured;
     }
     return validMoves.empty();
 }
-std::vector<Move> LegalMoveGenerator(char board[8][8], int RowStart, int ColStart, const int &counter){
-    std::vector <Move> moves=getAllPossibleMoves(board, RowStart, ColStart, counter);
+
+// Filters pseudo-legal moves down to strictly legal moves that don't leave the king in check
+std::vector<Move> LegalMoveGenerator(char board[8][8], int RowStart, int ColStart, const int &counter) {
+    std::vector<Move> moves = getAllPossibleMoves(board, RowStart, ColStart, counter);
     std::vector<Move> legalmoves;
-    for(int i=0;i<moves.size();i++){
-        Move m=moves[i];
-        char moved= board[m.RowStart][m.ColStart];
+
+    for (int i = 0; i < moves.size(); i++) {
+        Move m = moves[i];
+        char moved = board[m.RowStart][m.ColStart];
         char captured = board[m.RowEnd][m.ColEnd];
+
+        // Make move temporarily
         board[m.RowEnd][m.ColEnd] = moved;
         board[m.RowStart][m.ColStart] = '.';
+
         int kingRow = RowStart;
         int kingCol = ColStart;
-        if(moved == 'K' || moved == 'k'){
+        if (moved == 'K' || moved == 'k') {
             kingRow = m.RowEnd;
             kingCol = m.ColEnd;
         }
 
-        if(!isInCheck(board, kingRow, kingCol)){
+        if (!isInCheck(board, kingRow, kingCol)) {
             legalmoves.push_back(m);
-            board[m.RowStart][m.ColStart] = moved;
-            board[m.RowEnd][m.ColEnd] = captured;
         }
-        else {
-            board[m.RowStart][m.ColStart] = moved;
-            board[m.RowEnd][m.ColEnd] = captured;
-        }
+
+        // Undo move
+        board[m.RowStart][m.ColStart] = moved;
+        board[m.RowEnd][m.ColEnd] = captured;
     }
     return legalmoves;
 }
-int Values(char p){
-    if(p=='Q' || p=='q') return 900;
-    if(p=='R' || p=='r') return 500;
-    if(p=='B' || p=='b') return 300;
-    if(p=='N' || p=='n') return 300;
-    if(p=='P' || p=='p') return 100;
+
+// ============================================================================
+// Board Evaluation & Minimax Search
+// ============================================================================
+
+int Values(char p) {
+    if (p == 'Q' || p == 'q') return 900;
+    if (p == 'R' || p == 'r') return 500;
+    if (p == 'B' || p == 'b') return 300;
+    if (p == 'N' || p == 'n') return 300;
+    if (p == 'P' || p == 'p') return 100;
     return 0;
 }
-    static const int pawnTable[8][8] = {
-        {  0,  0,  0,  0,  0,  0,  0,  0},
-        { 50, 50, 50, 50, 50, 50, 50, 50},
-        { 10, 10, 20, 30, 30, 20, 10, 10},
-        {  5,  5, 10, 25, 25, 10,  5,  5},
-        {  0,  0,  0, 20, 20,  0,  0,  0},
-        {  5, -5,-10,  0,  0,-10, -5,  5},
-        {  5, 10, 10,-20,-20, 10, 10,  5},
-        {  0,  0,  0,  0,  0,  0,  0,  0}
-    };
-    static const int knightTable[8][8] = {
-        {-50,-40,-30,-30,-30,-30,-40,-50},
-        {-40,-20,  0,  0,  0,  0,-20,-40},
-        {-30,  0, 10, 15, 15, 10,  0,-30},
-        {-30,  5, 15, 20, 20, 15,  5,-30},
-        {-30,  0, 15, 20, 20, 15,  0,-30},
-        {-30,  5, 10, 15, 15, 10,  5,-30},
-        {-40,-20,  0,  5,  5,  0,-20,-40},
-        {-50,-40,-30,-30,-30,-30,-40,-50}
-    };
-    static const int bishopTable[8][8] = {
-        {-20,-10,-10,-10,-10,-10,-10,-20},
-        {-10,  0,  0,  0,  0,  0,  0,-10},
-        {-10,  0,  5, 10, 10,  5,  0,-10},
-        {-10,  5,  5, 10, 10,  5,  5,-10},
-        {-10,  0, 10, 10, 10, 10,  0,-10},
-        {-10, 10, 10, 10, 10, 10, 10,-10},
-        {-10,  5,  0,  0,  0,  0,  5,-10},
-        {-20,-10,-10,-10,-10,-10,-10,-20}
-    };
-    static const int rookTable[8][8] = {
-        {  0,  0,  0,  0,  0,  0,  0,  0},
-        {  5, 10, 10, 10, 10, 10, 10,  5},
-        { -5,  0,  0,  0,  0,  0,  0, -5},
-        { -5,  0,  0,  0,  0,  0,  0, -5},
-        { -5,  0,  0,  0,  0,  0,  0, -5},
-        { -5,  0,  0,  0,  0,  0,  0, -5},
-        { -5,  0,  0,  0,  0,  0,  0, -5},
-        {  0,  0,  0,  5,  5,  0,  0,  0}
-    };
-    static const int queenTable[8][8] = {
-        {-20,-10,-10, -5, -5,-10,-10,-20},
-        {-10,  0,  0,  0,  0,  0,  0,-10},
-        {-10,  5,  5,  5,  5,  5,  0,-10},
-        { -5,  0,  5,  5,  5,  5,  0, -5},
-        {  0,  0,  5,  5,  5,  5,  0, -5},
-        {-10,  5,  5,  5,  5,  5,  0,-10},
-        {-10,  0,  0,  0,  0,  0,  0,-10},
-        {-20,-10,-10, -5, -5,-10,-10,-20}
-    };
-    static const int kingTable[8][8] = {
-        {-30,-40,-40,-50,-50,-40,-40,-30},
-        {-30,-40,-40,-50,-50,-40,-40,-30},
-        {-30,-40,-40,-50,-50,-40,-40,-30},
-        {-30,-40,-40,-50,-50,-40,-40,-30},
-        {-20,-30,-30,-40,-40,-30,-30,-20},
-        {-10,-20,-20,-20,-20,-20,-20,-10},
-        { 20, 20,  0,  0,  0,  0, 20, 20},
-        { 20, 30, 10,  0,  0, 10, 30, 20}
-    };
 
-int ValuesPosition(char board[8][8], int RowStart, int ColStart, char piece){
+// Looks up the positional bonus for a piece at (RowStart, ColStart), mirroring rows for Black
+int ValuesPosition(char board[8][8], int RowStart, int ColStart, char piece) {
     const int (*table)[8] = nullptr;
-    switch(tolower(static_cast<unsigned char>(piece))){
+    switch (tolower(static_cast<unsigned char>(piece))) {
         case 'p': table = pawnTable; break;
         case 'n': table = knightTable; break;
         case 'b': table = bishopTable; break;
@@ -436,7 +498,9 @@ int ValuesPosition(char board[8][8], int RowStart, int ColStart, char piece){
     int tableRow = isWhite ? RowStart : 7 - RowStart;
     return table[tableRow][ColStart];
 }
-int evaluatePosition(char board[8][8]){
+
+// Evaluates the board from Black's perspective (positive = Black ahead, negative = White ahead)
+int evaluatePosition(char board[8][8]) {
     int score = 0;
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
@@ -453,90 +517,87 @@ int evaluatePosition(char board[8][8]){
     }
     return score;
 }
-int score=3900; //baseline score at the start of the game, 3900 is the total value of all pieces excluding kings
-void findKing(char board[8][8], int &row, int &col,int counter){
-    for(int i=0;i<8;i++){
-        for(int j=0;j<8;j++){
-            if(counter%2==0&& board[i][j]=='K'){
-                row=i;
-                col=j;
+
+void findKing(char board[8][8], int &row, int &col, int counter) {
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            if (counter % 2 == 0 && board[i][j] == 'K') {
+                row = i;
+                col = j;
                 return;
             }
-            if(counter%2!=0&& board[i][j]=='k'){
-                row=i;
-                col=j;
+            if (counter % 2 != 0 && board[i][j] == 'k') {
+                row = i;
+                col = j;
                 return;
             }
         }
     }
 }
-///minimax algorithm to evaluate the best move for the AI
-const int MIN_SCORE = -100000;
-const int MAX_SCORE = 100000;
-int minimax(char board[8][8], int depth, bool maximizing, int alpha, int beta, int counter){
+
+// Minimax search with Alpha-Beta pruning
+int minimax(char board[8][8], int depth, bool maximizing, int alpha, int beta, int counter) {
     if (depth == 0) return evaluatePosition(board);
-    int kingRow=-1;
-    int kingCol=-1;
+
+    int kingRow = -1;
+    int kingCol = -1;
     findKing(board, kingRow, kingCol, counter);
     std::vector<Move> legal = LegalMoveGenerator(board, kingRow, kingCol, counter);
-    if (maximizing)
-    {
+
+    if (maximizing) {
         int best = MIN_SCORE;
-        // Recur for left and right children
         if (legal.empty()) {
             if (isInCheck(board, kingRow, kingCol)) {
-                return -(10000 + depth);//checkmate
-
+                return -(10000 + depth); // Checkmate
             } else {
-                return 0;  // stalemate
+                return 0; // Stalemate
             }
         }
-        for (int i = 0; i < legal.size(); i++){
+
+        for (int i = 0; i < legal.size(); i++) {
             Move m = legal[i];
             char newBoard[8][8];
             memcpy(newBoard, board, sizeof(newBoard));
             newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
             newBoard[m.RowStart][m.ColStart] = '.';
-            int val = minimax(newBoard, depth - 1, false, alpha, beta, counter+1);
+
+            int val = minimax(newBoard, depth - 1, false, alpha, beta, counter + 1);
             best = std::max(best, val);
             alpha = std::max(alpha, best);
-            if (beta <= alpha) break;
+            if (beta <= alpha) break; // Alpha-Beta cutoff
         }
-    return best;
-    }
-    else
-    {
+        return best;
+    } else {
         int best = MAX_SCORE;
-        // Recur for left and right children
         if (legal.empty()) {
             if (isInCheck(board, kingRow, kingCol)) {
-                return +(10000 + depth);//checkmate
-
+                return +(10000 + depth); // Checkmate
             } else {
-                return 0;  // stalemate
+                return 0; // Stalemate
             }
         }
-        for (int i = 0; i < legal.size(); i++)
-        {
+
+        for (int i = 0; i < legal.size(); i++) {
             Move m = legal[i];
             char newBoard[8][8];
             memcpy(newBoard, board, sizeof(newBoard));
             newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
             newBoard[m.RowStart][m.ColStart] = '.';
-            int val = minimax(newBoard, depth - 1, true, alpha, beta, counter+1);
+
+            int val = minimax(newBoard, depth - 1, true, alpha, beta, counter + 1);
             best = std::min(best, val);
             beta = std::min(beta, best);
-
-            // Alpha Beta Pruning
-            if (beta <= alpha)
-                break;
+            if (beta <= alpha) break; // Alpha-Beta cutoff
         }
         return best;
     }
-
 }
-const int SEARCH_DEPTH = 3; //depth of the minimax search tree
-int main(){
+
+// ============================================================================
+// Main Game Loop
+// ============================================================================
+
+int main() {
     char board[8][8] = {
         {'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'},
         {'p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'},
@@ -547,166 +608,189 @@ int main(){
         {'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'},
         {'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'}
     };
+
     std::random_device rd;
     std::mt19937 rng(rd());
-    int counter=0;
-    bool whiteTurn = true;
-    while(true){
+    int counter = 0;
+
+    while (true) {
         BoardPrint(board);
         std::string move;
-        if(counter%2==0){
-            std::cout<<"White's move: ";
-            if(!(std::cin>>move)) break;
-        }
-        else{
+
+        if (counter % 2 == 0) {
+            // Human player (White)
+            std::cout << "White's move: ";
+            if (!(std::cin >> move)) break;
+        } else {
+            // AI player (Black)
             std::vector<Move> legal = LegalMoveGenerator(board, blackkingpos[0], blackkingpos[1], counter);
-            if(legal.empty()) break;  
-            int best=MIN_SCORE; // worst possible score
+            if (legal.empty()) break;
+
+            int best = MIN_SCORE;
             std::vector<Move> bestMoves;
             auto start = std::chrono::steady_clock::now();
-            for(int i=0;i<legal.size();i++){
+
+            for (int i = 0; i < legal.size(); i++) {
                 Move m = legal[i];
                 char newBoard[8][8];
                 memcpy(newBoard, board, sizeof(newBoard));
                 newBoard[m.RowEnd][m.ColEnd] = newBoard[m.RowStart][m.ColStart];
                 newBoard[m.RowStart][m.ColStart] = '.';
+
                 char piece = newBoard[m.RowEnd][m.ColEnd];
-                if(piece=='p' && m.RowEnd==7){
-                    newBoard[m.RowEnd][m.ColEnd]='q';
-                }
-                if(piece=='P' && m.RowEnd==0){
-                    newBoard[m.RowEnd][m.ColEnd]='Q';
-                }
-                int val = minimax(newBoard, SEARCH_DEPTH, false, MIN_SCORE, MAX_SCORE, counter+1);
-                if(val>best){
-                    best=val;
+                if (piece == 'p' && m.RowEnd == 7) newBoard[m.RowEnd][m.ColEnd] = 'q';
+                if (piece == 'P' && m.RowEnd == 0) newBoard[m.RowEnd][m.ColEnd] = 'Q';
+
+                int val = minimax(newBoard, SEARCH_DEPTH, false, MIN_SCORE, MAX_SCORE, counter + 1);
+                if (val > best) {
+                    best = val;
                     bestMoves.clear();
                     bestMoves.push_back(legal[i]);
-                }
-                else if(val==best){
+                } else if (val == best) {
                     bestMoves.push_back(legal[i]);
                 }
             }
+
             auto end = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
             std::cout << "Search took " << ms << " ms\n";
+
+            // Pick randomly among equally scored best moves
             std::uniform_int_distribution<int> dist(0, bestMoves.size() - 1);
             Move m = bestMoves[dist(rng)];
-            if(board[m.RowStart][m.ColStart]=='k' && m.ColStart==4 && abs(m.ColEnd - m.ColStart)==2){
-                move = (m.ColEnd==6) ? "O.O" : "O.O.O";
-            }
-            else{ 
-            move = "";
-            move += char('a' + m.ColStart);
-            move += char('0' + (8 - m.RowStart));
-            move += char('a' + m.ColEnd);
-            move += char('0' + (8 - m.RowEnd));
+
+            if (board[m.RowStart][m.ColStart] == 'k' && m.ColStart == 4 && abs(m.ColEnd - m.ColStart) == 2) {
+                move = (m.ColEnd == 6) ? "O.O" : "O.O.O";
+            } else {
+                move = "";
+                move += char('a' + m.ColStart);
+                move += char('0' + (8 - m.RowStart));
+                move += char('a' + m.ColEnd);
+                move += char('0' + (8 - m.RowEnd));
             }
             std::cout << "Black plays: " << move << "\n";
         }
-        if(move.length()!=4 && move != "O.O" && move != "O.O.O"){
-            std::cout<<"Invalid move format. Please use format like e2e4 or O.O/O.O.O for castle.\n";
+
+        // Validate input string format
+        if (move.length() != 4 && move != "O.O" && move != "O.O.O") {
+            std::cout << "Invalid move format. Please use format like e2e4 or O.O/O.O.O for castle.\n";
             continue;
         }
-        if(move.length() == 4 && (move[0] < 'a' || move[0] > 'h' || move[1] < '1' || move[1] > '8' ||
-           move[2] < 'a' || move[2] > 'h' || move[3] < '1' || move[3] > '8')){
-            std::cout<<"Invalid move format. Squares must be a-h and 1-8.\n";
+        if (move.length() == 4 && (move[0] < 'a' || move[0] > 'h' || move[1] < '1' || move[1] > '8' ||
+                                   move[2] < 'a' || move[2] > 'h' || move[3] < '1' || move[3] > '8')) {
+            std::cout << "Invalid move format. Squares must be a-h and 1-8.\n";
             continue;
         }
-        int ColStart=0, RowStart=0, ColEnd=0, RowEnd=0;
-            if(move=="O.O" || move=="O.O.O"){
-                int row = (counter%2==0) ? 7 : 0;
-                RowStart = row; ColStart = 4; RowEnd = row;
-                ColEnd = (move=="O.O") ? 6 : 2;
-            }else{
-                ColStart = move[0] - 'a';
-                RowStart = 8 - (move[1] - '0');
-                ColEnd = move[2] - 'a';
-                RowEnd = 8 - (move[3] - '0');
-            }    
-        if(isValidMove(board, RowStart, ColStart, RowEnd, ColEnd, counter, move)){
+
+        // Convert algebraic coordinates to 0-indexed matrix coordinates
+        int ColStart = 0, RowStart = 0, ColEnd = 0, RowEnd = 0;
+        if (move == "O.O" || move == "O.O.O") {
+            int row = (counter % 2 == 0) ? 7 : 0;
+            RowStart = row;
+            ColStart = 4;
+            RowEnd = row;
+            ColEnd = (move == "O.O") ? 6 : 2;
+        } else {
+            ColStart = move[0] - 'a';
+            RowStart = 8 - (move[1] - '0');
+            ColEnd = move[2] - 'a';
+            RowEnd = 8 - (move[3] - '0');
+        }
+
+        if (isValidMove(board, RowStart, ColStart, RowEnd, ColEnd, counter, move)) {
             char moved = board[RowStart][ColStart];
             char captured = board[RowEnd][ColEnd];
             board[RowEnd][ColEnd] = moved;
             board[RowStart][ColStart] = '.';
-            char epPawn = '.';                                 
-            if((moved=='P' || moved=='p') && ColStart != ColEnd && captured == '.'){
-                epPawn = board[RowStart][ColEnd];         
-                board[RowStart][ColEnd] = '.';                 
-            }                                                    
+
+            // Handle en passant pawn removal
+            char epPawn = '.';
+            if ((moved == 'P' || moved == 'p') && ColStart != ColEnd && captured == '.') {
+                epPawn = board[RowStart][ColEnd];
+                board[RowStart][ColEnd] = '.';
+            }
+
+            // Ensure the move doesn't leave our own king in check
             bool whiteMoved = isupper(moved);
             int kingRow = whiteMoved ? whitekingpos[0] : blackkingpos[0];
-            int kingCol = whiteMoved ? whitekingpos[1] : blackkingpos[1];              
-            if(moved == 'K' || moved == 'k'){
+            int kingCol = whiteMoved ? whitekingpos[1] : blackkingpos[1];
+            if (moved == 'K' || moved == 'k') {
                 kingRow = RowEnd;
                 kingCol = ColEnd;
-            } 
-            if(isInCheck(board, kingRow, kingCol)){
+            }
+
+            if (isInCheck(board, kingRow, kingCol)) {
+                // Roll back illegal move
                 board[RowStart][ColStart] = moved;
                 board[RowEnd][ColEnd] = captured;
-                if(epPawn != '.') board[RowStart][ColEnd] = epPawn;
+                if (epPawn != '.') board[RowStart][ColEnd] = epPawn;
                 std::cout << "That leaves your king in check.\n";
-            }
-            else {
-                if(moved == 'K'){ whitekingpos[0] = RowEnd; whitekingpos[1] = ColEnd; }
-                if(moved == 'k'){ blackkingpos[0] = RowEnd; blackkingpos[1] = ColEnd; }
-                if(moved=='K') whiteKingMoved=true;
-                if(moved=='k') blackKingMoved=true;
-                if(moved=='R' && RowStart==7 && ColStart==7) whiteRookHMoved=true;
-                if(moved=='R' && RowStart==7 && ColStart==0) whiteRookAMoved=true;
-                if(moved=='r' && RowStart==0 && ColStart==7) blackRookHMoved=true;
-                if(moved=='r' && RowStart==0 && ColStart==0) blackRookAMoved=true;
-                if(move=="O.O"){   board[RowStart][5]=board[RowStart][7]; board[RowStart][7]='.'; }
-                if(move=="O.O.O"){ board[RowStart][3]=board[RowStart][0]; board[RowStart][0]='.'; }
+            } else {
+                // Update king positions and castling rights
+                if (moved == 'K') { whitekingpos[0] = RowEnd; whitekingpos[1] = ColEnd; }
+                if (moved == 'k') { blackkingpos[0] = RowEnd; blackkingpos[1] = ColEnd; }
+                if (moved == 'K') whiteKingMoved = true;
+                if (moved == 'k') blackKingMoved = true;
+                if (moved == 'R' && RowStart == 7 && ColStart == 7) whiteRookHMoved = true;
+                if (moved == 'R' && RowStart == 7 && ColStart == 0) whiteRookAMoved = true;
+                if (moved == 'r' && RowStart == 0 && ColStart == 7) blackRookHMoved = true;
+                if (moved == 'r' && RowStart == 0 && ColStart == 0) blackRookAMoved = true;
+
+                // Complete rook movement for castling
+                if (move == "O.O")   { board[RowStart][5] = board[RowStart][7]; board[RowStart][7] = '.'; }
+                if (move == "O.O.O") { board[RowStart][3] = board[RowStart][0]; board[RowStart][0] = '.'; }
+
                 counter++;
+
+                // Handle pawn promotion
                 std::string promotion;
-                if((moved=='P') && (RowEnd==0)){
+                if (moved == 'P' && RowEnd == 0) {
                     bool done = false;
-                    while(!done){
-                        std::cout<<"Your pawn has reached the promotion square, please input the piece which u want to promote into.\n";
-                        std::cout<<"The piece should be all lower case. Examples: 'queen', 'knight', 'bishop', 'rook'.\n";
-                        std::cin>>promotion;
+                    while (!done) {
+                        std::cout << "Your pawn has reached the promotion square, please input the piece which u want to promote into.\n";
+                        std::cout << "The piece should be all lower case. Examples: 'queen', 'knight', 'bishop', 'rook'.\n";
+                        std::cin >> promotion;
                         done = true;
-                        if((promotion=="queen")  && (moved=='P'))board[RowEnd][ColEnd]='Q';
-                        else if((promotion=="rook")  && (moved=='P'))board[RowEnd][ColEnd]='R';
-                        else if((promotion=="knight")  && (moved=='P'))board[RowEnd][ColEnd]='N';
-                        else if((promotion=="bishop")  && (moved=='P'))board[RowEnd][ColEnd]='B';
-                        else{
-                            std::cout<<"Invalid promotion piece. Please try again.\n";
+                        if (promotion == "queen")       board[RowEnd][ColEnd] = 'Q';
+                        else if (promotion == "rook")   board[RowEnd][ColEnd] = 'R';
+                        else if (promotion == "knight") board[RowEnd][ColEnd] = 'N';
+                        else if (promotion == "bishop") board[RowEnd][ColEnd] = 'B';
+                        else {
+                            std::cout << "Invalid promotion piece. Please try again.\n";
                             done = false;
                         }
                     }
                 }
-                if((moved=='p') && (RowEnd==7)){
-                    board[RowEnd][ColEnd]='q';
-                    std::cout<<"Black pawn promoted to queen.\n";
+                if (moved == 'p' && RowEnd == 7) {
+                    board[RowEnd][ColEnd] = 'q';
+                    std::cout << "Black pawn promoted to queen.\n";
                 }
-                PawnValue = -1; // Reset PawnValue after the move
-                if((moved == 'P' || moved == 'p') && abs(RowStart - RowEnd) == 2){
+
+                // Track double pawn push for en passant on the immediately following turn
+                PawnValue = -1;
+                if ((moved == 'P' || moved == 'p') && abs(RowStart - RowEnd) == 2) {
                     PawnValue = ColEnd;
-                    
-                }                 
+                }
+
+                // Check opponent's king status (check, checkmate, or stalemate)
                 int enemyKingRow = whiteMoved ? blackkingpos[0] : whitekingpos[0];
                 int enemyKingCol = whiteMoved ? blackkingpos[1] : whitekingpos[1];
-                if(isInCheck(board, enemyKingRow, enemyKingCol)){
+                if (isInCheck(board, enemyKingRow, enemyKingCol)) {
                     std::cout << (whiteMoved ? "Black is in check.\n" : "White is in check.\n");
                     if (Checkmate(board, enemyKingRow, enemyKingCol, counter)) {
                         std::cout << (whiteMoved ? "Checkmate! White wins.\n" : "Checkmate! Black wins.\n");
                         break;
-                    } else {
-                        std::cout << "";
                     }
+                } else if (Checkmate(board, enemyKingRow, enemyKingCol, counter)) {
+                    std::cout << "Stalemate, draw.\n";
+                    break;
                 }
-                else if(Checkmate(board, enemyKingRow, enemyKingCol, counter)){
-                std::cout<<"Stalemate, draw.\n";
-                break;
             }
-            }
-        }
-        else{
-            std::cout<<"Invalid move. Try again.\n";
+        } else {
+            std::cout << "Invalid move. Try again.\n";
         }
     }
+
     BoardPrint(board);
     return 0;
 }
